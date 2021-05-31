@@ -1,0 +1,697 @@
+---
+title: "Stock Market Participation"
+author: "Lam Tran"
+date: "10/18/2020"
+output: 
+  html_document:
+    toc: true
+    toc_depth: 2
+    toc_float: true
+    code_folding: show
+---
+
+# Data Preparation
+
+```{r readfile}
+#Import data file
+nfcs <- read.csv("NFCS 2018 State Data 190603.csv")
+```
+
+The data that will be used is from a survey from the National Financial Capability Study that surveyed 27,091 American adults from June through October 2018 about their financial status and related financial capabilities. 
+
+```{r setup, warning = FALSE, include = FALSE}
+#Import packages
+library(dplyr)
+library(ggplot2) 
+library(corrplot) #for correlation matrix
+library(rms) #for confusion matrix
+library(car) #for vif test
+library(caret) #for confusion matrix
+library(margins) #for ame
+library(lmtest) #for hetero test for lpm
+library(sandwich) #for white robust standard error after identify hetero
+options(scipen = 999) #turn off scientifc notation
+```
+
+## Variable Selection
+
+```{r}
+#Select variables to use
+selected_nfcs <- nfcs %>%
+  select(Participation = B14, Male = A3, White = A4A_new_w, Risk = J2, Debt = G23, A3Ar_w, A5_2015, A8, Fin_Lit =  M4, M6, M7, M8, M9, M10, M31, B41_1, B41_2, B42, B43)
+```
+
+```{r}
+#Summary statistics
+summary(selected_nfcs)
+```
+
+
+The variables I use in the model are:
+  
+  
+* B14 = Participation (dependent variable): Not including retirement accounts, do you [does your household] have any investments in stocks, bonds, mutual funds, or other securities? 
+  + 1: Yes
+  + 2: No
+  + 98: Don't know
+  + 99: Prefer not to say
+  
+  
+* A3 = Male: What is your gender?
+  + 1: Male
+  + 2: Female
+  
+  
+* A4A_new_w = White: Ethnicity
+  + 1: White alone
+  + 2: Non-white
+
+
+* J2 = Risk: When thinking of your financial investments, how willing are you to take risks?
+  + 1: Not At All Willing
+  + 2
+  + 3
+  + 4
+  + 5
+  + 6
+  + 7
+  + 8
+  + 9
+  + 10: Very Willing
+  + 98: Don't know
+  + 99: Prefer not to say
+
+
+* G23 = Debt: How strongly do you agree or disagree with the following statement? - I have too much debt right now
+  + 1: Strongly Disagree
+  + 2
+  + 3
+  + 4: Neither Agree nor Disagree
+  + 5
+  + 6
+  + 7: Strongly Agree
+  + 98: Don't know
+  + 99: Prefer not to say
+  
+  
+* A3Ar_w: Age group
+  + 1: 18-24
+  + 2: 25-34
+  + 3: 35-44
+  + 4: 45-54
+  + 5: 55-64
+  + 6: 65+
+  
+  
+* A5_2015: What was the highest level of education that you completed?
+  + 1: Did not complete high school
+  + 2: High school graduate - regular high school diploma
+  + 3: High school graduate - GED or alternative credential
+  + 4: Some college, no degree
+  + 5: Associate's degree
+  + 6: Bachelor's degree
+  + 7: Post graduate degree
+  + 99: Prefer not to say
+
+
+* A8: What is your [household's] approximate annual income, including wages, tips, investment income, public assistance, income from retirement plans, etc.?
+  + 1: Less than $15,000
+  + 2: At least $15,000 but less than $25,000
+  + 3: At least $25,000 but less than $35,000
+  + 4: At least $35,000 but less than $50,000
+  + 5: At least $50,000 but less than $75,000
+  + 6: At least $75,000 but less than $100,000
+  + 7: At least $100,000 but less than $150,000
+  + 8: $150,000 or more
+  + 98: Don't know
+  + 99: Prefer not to say
+
+
+* M4 = Fin_Lit: On a scale from 1 to 7, where 1 means very low and 7 means very high, how would you assess your overall financial knowledge?
+  + 1: Very Low
+  + 2
+  + 3
+  + 4
+  + 5
+  + 6
+  + 7: Very High
+  + 98: Don't know
+  + 99: Prefer not to say
+
+
+* M6: Suppose you had $100 in a savings account and the interest rate was 2% per year. After 5 years, how much do you think you would have in the account if you left the money to grow?
+  + 1: More than $102 (correct answer)
+  + 2: Exactly $102
+  + 3: Less than $102
+  + 98: Don't know
+  + 99: Prefer not to say
+
+
+* M7: Imagine that the interest rate on your savings account was 1% per year and inflation was 2% per year. After 1 year, how much would you be able to buy with the money in this account?
+  + 1: More than today
+  + 2: Exactly the same
+  + 3: Less than today (correct answer)
+  + 98: Don't know
+  + 99: Prefer not to say
+ 
+  
+* M8: If interest rates rise, what will typically happen to bond prices?
+  + 1: They will rise
+  + 2: They will fall (correct answer)
+  + 3: They will stay the same
+  + 4: There is no relationship between bond prices and the interes
+  + 98: Don't know
+  + 99: Prefer not to say
+ 
+  
+* M31: Suppose you owe $1,000 on a loan and the interest rate you are charged is 20% per year compounded annually. If you didn’t pay anything off, at this interest rate, how many years would it take for the amount you owe to double?
+  + 1: Less than 2 years
+  + 2: At least 2 years but less than 5 years (correct answer)
+  + 3: At least 5 years but less than 10 years
+  + 4: At least 10 years
+  + 98: Don't know
+  + 99: Prefer not to say
+  
+  
+* M9: A 15-year mortgage typically requires higher monthly payments than a 30-year mortgage, but the total interest paid over the life of the loan will be less.
+  + 1: True (correct answer)
+  + 2: False
+  + 98: Don't know
+  + 99: Prefer not to say
+
+
+* M10: Buying a single company's stock usually provides a safer return than a stock mutual fund.
+  + 1: True
+  + 2: False (correct answer)
+  + 98: Don't know
+  + 99: Prefer not to say
+
+
+* B41_1: How often do you access your checking or savings account in the following ways? - Online banking with a laptop or desktop computer
+  + 1: Never
+  + 2: Sometimes
+  + 3: Frequently
+  + 98: Don’t know
+  + 99: Prefer not to say
+
+
+* B41_2: How often do you access your checking or savings account in the following ways? - Mobile banking with text messaging, mobile app, or Internet browser or email on a mobile phone
+  + 1: Never
+  + 2: Sometimes
+  + 3: Frequently
+  + 98: Don’t know
+  + 99: Prefer not to say
+ 
+  
+* B42: How often do you use your mobile phone to transfer money to another person?
+  + 1: Frequently
+  + 2: Sometimes
+  + 3: Never
+  + 98: Don’t know
+  + 99: Prefer not to say
+  
+  
+* B43: How often do you use websites or apps to help with financial tasks such as budgeting, saving, or credit management (e.g., GoodBudget, Mint, Credit Karma, etc.)? Please do not include websites or apps for making payments or money transfers.
+  + 1: Frequently
+  + 2: Sometimes
+  + 3: Never
+  + 98: Don’t know
+  + 99: Prefer not to say
+  
+## Variable Transformation
+
+* Replace value 98 and 99 with NA, except for variables that relate to financial test (m6-10, m31), in which value 98 and 99 will be treated as wrong answers (since people who do not know the answers are the ones who will give wrong answer)
+
+* For binary variables (Participation, White, Male), replace value 2 with 0
+
+```{r}
+#Participation: 
+## Replace 98 (don't know) and 99 (prefer not to say) values with NA
+selected_nfcs$Participation[selected_nfcs$Participation == 98 | selected_nfcs$Participation == 99] <- NA
+
+## Replace 2 (No) value with 0 (binary encoding convention)
+selected_nfcs$Participation[selected_nfcs$Participation == 2] <- 0
+
+#Male
+## Replace 2 (Female) value with 0 (binary encoding convention)
+selected_nfcs$Male[selected_nfcs$Male == 2] <- 0
+
+#White
+## Replace 2 (Non-white) value with 0 (binary encoding convention)
+selected_nfcs$White[selected_nfcs$White == 2] <- 0
+
+#Risk: 
+## Replace 98 (don't know) and 99 (prefer not to say) values with NA
+selected_nfcs$Risk[selected_nfcs$Risk == 98 | selected_nfcs$Risk == 99] <- NA
+
+#Debt: 
+## Replace 98 (don't know) and 99 (prefer not to say) values with NA
+selected_nfcs$Debt[selected_nfcs$Debt == 98 | selected_nfcs$Debt == 99] <- NA
+
+#Fin_Lit
+## Replace 98 (don't know) and 99 (prefer not to say) values with NA
+selected_nfcs$Fin_Lit[selected_nfcs$Fin_Lit == 98 | selected_nfcs$Fin_Lit == 99] <- NA
+
+```
+
+* For age and income features (A3ar_w and A8) with categorical bins instead of numerical values, replace each bin with the mean value
+
+```{r}
+#A3Ar_w: this is the age feature, but is is in categorical bin instead of numeric.
+##Option 1: Create 6 dummy/binary variables using hot encoding
+##Option 2: Create a new feature using mean of each bucket => preferable because inputting 1 variable into the model is better than 6
+
+selected_nfcs$Age <- car::recode(selected_nfcs$A3Ar_w, "1 = 21; 2 = 30; 3 = 40; 4 = 50; 5 = 60; 6 = 70")
+```
+
+```{r}
+#A8: this is the income feature
+
+# Convert from categorical bin to numeric.
+##Option 1: Create 8 dummy/binary variables using hot encoding
+##Option 2: Create a new feature using mean of each bucket => preferable because inputting 1 variable into the model is better than 8
+
+#Replace 98 (don't know) and 99 (prefer not to say) values with NA
+
+selected_nfcs$Income <- car::recode(selected_nfcs$A8, "1 = 10; 2 = 20; 3 = 30; 4 = 42.5; 5 = 62.5; 6 = 87.5; 7 = 125; 8 = 175; 98 = NA; 99 = NA")
+
+#Note: Income will be in thousands of dollars
+
+```
+
+* For education feature (A5_2015), create dummy variables High_Ed and Low_Ed
+
+```{r}
+#A5_2015: this is the education feature
+
+## Replace 99 (prefer not to say) values with NA
+selected_nfcs$A5_2015[selected_nfcs$A5_2015 == 99] <- NA
+
+##Create dummy variables
+selected_nfcs$Low_Ed <- ifelse(selected_nfcs$A5_2015 == 1, 1, 0)
+selected_nfcs$High_Ed <- ifelse(selected_nfcs$A5_2015 >= 5, 1, 0)
+
+##Note: Low_Ed: People who did not complete high school, High_Ed = People who have an associate’s degree, bachelor’s degree, or post grad degree. Mid_Ed (excluded group) = People with a high school/GED degree or some college
+```
+
+* For financial test variables (m6-10, m31), sum them up (higher value means better financial knowledge) and create dummy variables High_Test (>=6) and Low_Test (<=2) from the new variable
+
+```{r}
+#M6, M7, M8, M9, M10, M31: these are the features regarding the financial quiz. The right answer will be coded as 1 while the wrong answer along with value 98, 99 will be coded as 0
+
+selected_nfcs$M6 <- ifelse(selected_nfcs$M6 == 1, 1, 0)
+selected_nfcs$M7 <- ifelse(selected_nfcs$M7 == 3, 1, 0)
+selected_nfcs$M8 <- ifelse(selected_nfcs$M8 == 2, 1, 0)
+selected_nfcs$M31 <- ifelse(selected_nfcs$M31 == 2, 1, 0)
+selected_nfcs$M9 <- ifelse(selected_nfcs$M9 == 1, 1, 0)
+selected_nfcs$M10 <- ifelse(selected_nfcs$M10 == 2, 1, 0)
+
+#Create Fin_Test as the sum of these variables. Supposedly, the higher the number for Fin_Test, the more financial knowledge the person has
+
+selected_nfcs <- selected_nfcs %>%
+  mutate(Fin_Test = rowSums(select(.,M6:M31)))
+
+#We cannot argue that the movement by one unit in Fin_Test is constant (e.g. 1 to 2 = 6 to 7) as the difficulty of each question varies, so we must create dummy variables from Fin_Test
+
+selected_nfcs$Low_Test <- ifelse(selected_nfcs$Fin_Test <= 2, 1, 0)
+selected_nfcs$High_Test <- ifelse(selected_nfcs$Fin_Test >= 6, 1, 0)
+
+#Note: The excluded group is Med_Lit where Fin_Test equals 3 to 5
+
+```
+
+* For familiarity with financial mobile app (b41_1, b41_2, b42, b43), sum b41_1 and b41_2 up (higher value means more familiar), subtract b42 and b43 (lower value means more familiar) to create a new variable Familiar
+
+
+```{r}
+#B41_1, B41_2, B42, B43: these are the features regarding familiarity with financial mobile app
+
+## Replace 98 (don't know) and 99 (prefer not to say) values with NA
+selected_nfcs$B41_1[selected_nfcs$B41_1 == 98 | selected_nfcs$B41_1 == 99] <- NA
+selected_nfcs$B41_2[selected_nfcs$B41_2 == 98 | selected_nfcs$B41_2 == 99] <- NA
+selected_nfcs$B42[selected_nfcs$B42 == 98 | selected_nfcs$B42 == 99] <- NA
+selected_nfcs$B43[selected_nfcs$B43 == 98 | selected_nfcs$B43 == 99] <- NA
+
+# Sum B1_1 and B41_2 up (higher value means more familiar), subtract B42 and B43 (lower value means more familiar) to create a new variable Familiar
+selected_nfcs <- selected_nfcs %>%
+  mutate(Familiar = B41_1 + B41_2 - B42 - B43)
+
+```
+
+*Take the columns needed for the model with complete observations. From 27091 rows, we now have 22368 rows which is a drop of 21%
+
+```{r}
+#Subset the data frame to get only the variables needed for the model
+final_nfcs <- selected_nfcs %>%
+  select(Participation, White, Male, Risk, Debt, Fin_Lit, Age, Income,
+           Low_Test, High_Test, Low_Ed, High_Ed, Familiar) %>%
+  tidyr::drop_na()
+
+
+```
+
+## Data Exploration
+
+```{r}
+summary(final_nfcs)
+#get the sd that the summary function does not provide
+sapply(final_nfcs, sd)
+```
+
+```{r}
+final_nfcs %>%
+  filter(Participation == 1) %>%
+  summary()
+final_nfcs %>%
+  filter(Participation == 1) %>%
+  sapply(sd)
+
+```
+```{r}
+final_nfcs %>%
+  filter(Participation == 0) %>%
+  summary()
+final_nfcs %>%
+  filter(Participation == 0) %>%
+  sapply(sd)
+```
+
+* From the summary statistics table, we see that 38.01% participate in the stock market, 76.03% is white, 45.51% is male. The average age of respondents is 48.9, the average income is $68,820. 
+
+* Surprisingly, 48.99% of respondents have a high level of education, while only 1.56% have a low level of education.
+
+* The Risk variable has mean of 4.975 and median of 5, suggesting a normal distribution as mean is close to median. Based on the graph, the distribution is quite normal except for an exceptional high frequency of risk level of 1. Indeed, level 1 has the highest percentage of frequency. 
+
+*There is no outlier in our dataset because all numerical answers are limited within a scale
+
+```{r, message = FALSE}
+ggplot(final_nfcs, aes(as.factor(Risk))) +
+  geom_bar(fill = "firebrick", width = 0.75) +
+  ggtitle("Frequency of self-assesed risk tolerance") +
+  ylab("Frequency") +
+  xlab("Risk Tolerance") +
+  theme(plot.title = element_text(vjust = 2, size = 15), axis.title = element_text(size = 13, vjust = 2)) +
+  theme_linedraw()
+```
+
+* Most people strongly agree or strongly disagree that they have too much debt. The third largest group is the group of people who do not have strong opinion about their debt level (level 4).
+
+```{r, message = FALSE}
+ggplot(final_nfcs, aes(as.factor(Debt))) +
+  geom_bar(fill = "firebrick", width = 0.75) +
+  ggtitle("Frequency of self-assesed debt level") +
+  ylab("Frequency") +
+  xlab("Debt Level") +
+  theme(plot.title = element_text(vjust = 2, size = 15), axis.title = element_text(size = 13, vjust = 2)) +
+  theme_linedraw()
+```
+
+* Based on the financial literacy test, 30.24% people have little financial knowledge and only 9.10% have high financial literacy level. The statistics from Low_Lit and High_Lit contradict with those from Fin_Lit, which is the self-assessed financial literacy level in which half the respondents consider them to have high financial knowledge (greater or equal to level 5 on a scale of 7)
+
+```{r, message = FALSE}
+ggplot(final_nfcs, aes(as.factor(Fin_Lit))) +
+  geom_bar(fill = "firebrick", width = 0.75) +
+  ggtitle("Frequency of self-assesed financial literacy knowledge level") +
+  ylab("Frequency") +
+  xlab("Financial Literacy Level") +
+  theme(plot.title = element_text(vjust = 2, size = 15), axis.title = element_text(size = 13, vjust = 2)) +
+  theme_linedraw()
+```
+* The correlation between the self-assessed financial literacy level and the number of questions that the respondents answered correctly is low at 26.57%. This along with the observation we made above indicates that many respondents overestimate their financial literacy level.
+
+```{r}
+cor(selected_nfcs$Fin_Lit, selected_nfcs$Fin_Test, use = "complete.obs")
+```
+* Based on the summary statistics and the frequency graph of Familiar (mean = -0.45, median = 0), this variable has a pretty normal distribution. 
+
+```{r, message = FALSE}
+ggplot(final_nfcs, aes(as.factor(Familiar))) +
+  geom_bar(fill = "firebrick", width = 0.75) +
+  ggtitle("Frequency of familiarity level with financial mobile apps") +
+  ylab("Frequency") +
+  xlab("Familiarity Level with Financial Mobile Apps") +
+  theme(plot.title = element_text(vjust = 2, size = 15), axis.title = element_text(size = 13, vjust = 2)) +
+  theme_linedraw()
+```
+
+* Based on the correlation matrix plot, there is a strong negative correlation between Age and Familiar (-0.4413). This makes sense as older people tend to not adopt technology as quick as younger ones, so they are less familiar with financial mobile apps. But all correlations are not strong and should not create any problem for the models.
+
+```{r}
+#cor(final_nfcs)
+corrplot(cor(final_nfcs), method="color",addCoef.col = "black", number.cex=0.5, tl.col="black", tl.cex = 0.8, tl.srt=45)
+```
+
+# Model Selection
+
+```{r}
+#For LPM model => heteroskedasticity (vif)
+lpm <- lm(Participation ~ Familiar + White + Male + Risk + Debt + Fin_Lit + Age + Income + Low_Test + High_Test + Low_Ed + High_Ed, data = final_nfcs)
+summary(lpm)
+```
+
+```{r}
+#calculate Log Likelihood
+
+#SSE - sum(actual - predicted^2)
+SSE <- sum(lpm$residuals^2)
+
+#SSR - sum(predicted - ybar^2)
+ybar <- mean(final_nfcs$Participation)
+SSR <- sum((lpm$fitted.values-ybar)^2)
+
+logLik(lpm)
+```
+
+* In the base Linear Probability Model, all independent variables and the model itself are statistically significant at the conventional levels. The signs of all the coefficients are as predicted. However, the adjusted R-squared value is only 0.252, meaning that the independent variables only explain 25.2% of the variation in the likelihood to participate in the stock market. Even though there is no important variable missing, the R-squared value is still lower than the standard threshold of 0.3 for cross-sectional data. One possibility is that the function is trying to estimate the linear relationship between the dependent variable and the independent variables, whereas, with a binary dependent variable, a Logistic Regression Model with a sigmoid function would be a better fit that would allow the same set of independent variables to explain more variation in the dependent variable. 
+
+```{r}
+#base logit model 
+base_model <- glm(Participation ~ Familiar + White + Male + Risk + Debt + Fin_Lit + Age + Income + Low_Test + High_Test + Low_Ed + High_Ed, data = final_nfcs, family = "binomial")
+summary(base_model)
+```
+
+* As can be seen from the Base Model (Logit) column, switching to the logistic model helps to increase the R-squared value to 0.338, passing the 0.3 threshold (although there should be some discrepancy between the actual adjusted R-squared value and pseudo R-squared value). Based on the Likelihood Ratio Test, the whole model is also statistically significant at the 99% level. All variables in the base logit model are significant at the 99% level (except for Male, which is significant at the 90% level) and have the correct signs. It can be seen that in contrast with what was expected, gender still has a significant impact on the likelihood to participate in the stock market after controlling for financial literacy level and risk tolerance level. 
+
+```{r}
+#model 2 (only to confirm if removing risk and finlit would change male's significance)
+model2 <- glm(Participation ~ Familiar + White + Male + Debt + Age + Income + Low_Test + High_Test + Low_Ed + High_Ed, data = final_nfcs, family = "binomial")
+summary(model2)
+```
+* However, if we remove the variable Risk and FinLit (Logit 2), the coefficient of Male becomes much greater by 7 times in magnitude (from 0.057 to 0.371) and the variable becomes significant at the 99% level from the 90% level, while the coefficients and the significance of other independent variables barely change. This means that similar to what has been found by Almenberg and Dreber (2015), the gender gap in investing could be mostly explained by the difference in risk tolerance level and financial literacy level between males and females.
+
+* From the base logistic model, I was interested in looking at the interaction between Familiar and Age, and between Familiar and Male. The reason behind was that older people are less adapted to technology (this claim is supported by the medium negative correlation of -0.44 between Age and Familiar), so even when holding other factors constant, older people who are more familiar with mobile apps are potentially much more likely to participate in the stock market than older people who are not familiar with them. Similarly, I would also imagine that males who are familiar with mobile apps are more likely to trade stocks than males who are not and females who are. Therefore, from the base model, I wanted to further include MalexFamiliar and AgexFamiliar.
+
+```{r}
+#Logit model 3 => best
+model3 <- glm(Participation ~ Familiar + White + Male + Risk + Debt + Fin_Lit + Age + Income + Low_Test + High_Test + Low_Ed + High_Ed + Age*Familiar + Male*Familiar, data = final_nfcs, family = "binomial")
+summary(model3)
+```
+
+* The inclusion of the two new interactive variables leads us to Logit Model 3. The pseudo R-squared value slightly increased from that of Logit Model 2 (0.338 to 0.349), meaning that adding the two new variables is a good idea. The accuracy and sensitivity also increase from Logit Model 2 to Logit Model 3, specifically from 0.740 to 0.748 for accuracy and 0.584 to 0.597 for sensitivity, further indicating that model 3 is better. All variables, including the two new ones, are statistically significant at the 99% level, and the inclusion of the two new variables, interestingly, makes the Male variable significant at the 99% level from the 90% level. Based on the Chi-square test (or the likelihood ratio test), the whole model is also statistically significant at the 99% level. The signs of all variables remain similar to these in model 2. Therefore, Logit Model 3 is my best model for this study.
+
+# Model Diagnose
+
+```{r}
+# is hetero -> white's robust SE for all models
+bptest(lpm)
+```
+
+* After performing the Breusch-Pagan test, it is confirmed that the model also has a heteroskedasticity issue (BP = 1274.1, df = 12, p-value < 0.01). I have included the White robust standard errors to account for the effect of heteroskedasticity on the statistical significance of the model.
+
+
+```{r}
+
+#White's robust SE for lpm, HC1 so that results are consistent with Stata's results
+#reference: https://data.princeton.edu/wws509/r/robust
+coeftest(lpm, vcov = vcovHC(lpm, type="HC1"))
+```
+
+```{r}
+#White's robust SE for base model, HC1 so that results are consistent with Stata's results
+#reference: https://data.princeton.edu/wws509/r/robust
+coeftest(base_model, vcov = vcovHC(base_model, type="HC1"))
+```
+```{r}
+#White's robust SE for model2, HC1 so that results are consistent with Stata's results
+#reference: https://data.princeton.edu/wws509/r/robust
+coeftest(model2, vcov = vcovHC(model2, type="HC1"))
+```
+
+```{r}
+#White's robust SE for model3, HC1 so that results are consistent with Stata's results
+#reference: https://data.princeton.edu/wws509/r/robust
+coeftest(model3, vcov = vcovHC(model3, type="HC1"))
+```
+
+```{r}
+#Multicollinearity => not present as all are under 5
+vif(lpm)
+```
+
+* There is no multicollinearity issue with this model as we have believed because all VIF values are under 1.5, much lower than the threshold of 5. 
+
+```{r}
+#For Base Model
+print(lrm(Participation ~ Familiar + White + Male + Risk + Debt + Fin_Lit + Age + Income + Low_Test + High_Test + Low_Ed + High_Ed, data = final_nfcs))
+```
+
+```{r}
+#confusion matrix for base model
+prob = predict(base_model, final_nfcs, type="response")
+pred = rep(0, dim(final_nfcs)[1])
+pred[prob > .5] = 1
+confusionMatrix(as.factor(pred), as.factor(final_nfcs$Participation), positive = "1")
+```
+
+```{r}
+#For logit model 2
+print(lrm(Participation ~ Familiar + White + Risk + Debt + Fin_Lit + Age + Income + Low_Test + High_Test + Low_Ed + High_Ed, data = final_nfcs))
+```
+
+```{r}
+#confusion matrix for logit model 2
+prob = predict(model2, final_nfcs, type="response")
+pred = rep(0, dim(final_nfcs)[1])
+pred[prob > .5] = 1
+confusionMatrix(as.factor(pred), as.factor(final_nfcs$Participation), positive = "1")
+```
+
+```{r}
+#For Model 3
+print(lrm(Participation ~ Familiar + White + Male + Risk + Debt + Fin_Lit + Age + Income + Low_Test + High_Test + Low_Ed + High_Ed + Familiar*Male + Familiar*Age, data = final_nfcs))
+```
+```{r}
+#confusion matrix for model 3 when threshold = 0.5
+prob = predict(model3, final_nfcs, type="response")
+pred = rep(0, dim(final_nfcs)[1])
+pred[prob > .5] = 1
+confusionMatrix(as.factor(pred), as.factor(final_nfcs$Participation), positive = "1")
+```
+```{r}
+#confusion matrix for model 3 when threshold = 0.4
+prob = predict(model3, final_nfcs, type="response")
+pred = rep(0, dim(final_nfcs)[1])
+pred[prob > .4] = 1
+confusionMatrix(as.factor(pred), as.factor(final_nfcs$Participation), positive = "1")
+```
+* It can be seen in table 3 that the sensitivity of 59.71% of model 3 is low, while the accuracy of 74.84% is moderate. In fact, the specificity of model 3 is pretty high at 84.11%, and since there is a trade-off between sensitivity and specificity, I decided to lower the specificity to make the sensitivity of the model higher by changing the decision threshold level. The decision threshold for the base logit model, model 2, and model 3 was at 0.5 by convention. After trials, I decided that the threshold of 0.4 is the best, which would give the accuracy of 73.66%, sensitivity of 71.63%, and specificity of 74.91%, all are moderately high. If we further lower the threshold, the accuracy and specificity would be much lower than the sensitivity and the model would lose the balance in its predictive power.
+
+# Model Implications
+
+```{r}
+#AME of model 3 => last column in table 3 in report
+summary(margins(model3))
+```
+
+* The positive sign and the significance level of the Familiar variable confirmed my hypothesis that familiarity with mobile financial services inspired people to participate in stock trading. To elaborate, by looking at the AME, one unit increase in the familiarity with financial mobile apps score would increase the probability of participating in the stock market by 0.79 percentage point. In other words, if the same person who is moderately familiar with financial mobile app (Familiar = 0) became extremely familiar with the apps (Familiar = 4), the likelihood of the person participating in the stock market only increases by 3.16 percentage point, much smaller than the effect of other independent variables. Although the economic significance of the familiarity with mobile apps is small, it should be taken into account that mobile apps are much easier to learn compared to increasing a persons’ education level, or financial knowledge.
+
+
+* Regarding other variables, the factors that have the greatest effect on the likelihood of investing in the stock market in decreasing order are the education level of the participants, their scores on the financial literacy test, their race, their self-assessed financial literacy level, their risk tolerance level, then their debt level. Most significantly, the likelihood of participating in the stock market for a person who did not finish high school is 11.6 percentage point lower compared to a person who has a GED or high school degree, and a person who has an associate’s, bachelor’s, or master/Ph.D. degree would have 5.7 percentage point higher in the likelihood to participate in the stock market compared to people who have a high school or GED degree. When keeping other factors constant at means, one unit increase in the familiarity level with financial mobile apps would always increase the likelihood to participate in the stock market for people of all levels of education (figure 9). 
+
+
+```{r}
+#MEM of familiar with low education
+summary(margins(model3, at = list(Age = 48.9, Familiar = c(-4,-3,-2,-1,0,1,2,3,4), White = 0.76, Male = 0.455, Income = 68.82, Risk = 4.975, Debt = 3.621, Low_Test = 0.302, High_Test = 0.091, Low_Ed = 1, High_Ed = 0, Fin_Lit = 5.23), variables = "Familiar"))$AME
+```
+
+```{r}
+#MEM of familiar with mid education
+summary(margins(model3, at = list(Age = 48.9, Familiar = c(-4,-3,-2,-1,0,1,2,3,4), White = 0.76, Male = 0.455, Income = 68.82, Risk = 4.975, Debt = 3.621, Low_Test = 0.302, High_Test = 0.091, Low_Ed = 0, High_Ed = 0, Fin_Lit = 5.23), variables = "Familiar"))$AME
+```
+
+
+```{r}
+#MEM of familiar with high education
+summary(margins(model3, at = list(Age = 48.9, Familiar = c(-4,-3,-2,-1,0,1,2,3,4), White = 0.76, Male = 0.455, Income = 68.82, Risk = 4.975, Debt = 3.621, Low_Test = 0.302, High_Test = 0.091, Low_Ed = 0, High_Ed = 1, Fin_Lit = 5.23), variables = "Familiar"))$AME
+```
+
+```{r}
+#for final report
+plot_df = as.data.frame(matrix(0, ncol = 0, nrow = 9))
+plot_df$Familiarity <- c(-4,-3,-2,-1,0,1,2,3,4)
+plot_df$Low_Ed <- c(0.006394785, 0.006639361, 0.006888462, 0.007141716, 0.007398703, 0.007658954, 0.007921953, 0.008187137,0.008453890 )
+plot_df$Mid_Ed <- c(0.009744935, 0.010006143, 0.010263510, 0.010516100, 0.010762956, 0.011003103, 0.011235555, 0.011459323, 0.011673423 )
+plot_df$High_Ed <- c(0.01130399, 0.01152495, 0.01173594, 0.01193601, 0.01212420, 0.01229962, 0.01246139, 0.01260870, 0.01274079 )
+
+ggplot(data = plot_df, aes(x = Familiarity)) +
+  geom_line(aes(y = Low_Ed, colour = "Low_Ed")) +
+  geom_line(aes(y = Mid_Ed, colour = "Mid_Ed")) +
+  geom_line(aes(y = High_Ed, colour = "High_Ed")) +
+  scale_colour_manual(name="Education Level",
+    values=c(Low_Ed="red", Mid_Ed="blue", High_Ed="purple")) +
+  ylab("MEM of Familiarity on Likelihood to Invest") +
+  xlab("Familiarity Level")+
+  theme_linedraw()
+
+```
+* A person who answered correctly 6/6 questions on the financial literacy test would have 8.1 percentage points higher in the likelihood to trade stocks, while a person who answered correctly 1 or 2 questions on the test would have 4.7 percentage points lower in the likelihood to trade stocks, all compared with a person who answered from 3 to 5 questions correctly. Furthermore, surprisingly, after controlling for demographic factors such as age, income, and educational level, a white person would have a 4.1 percentage points higher in the likelihood to invest in stocks compared to non-white people. This racial gap in investing was hypothesized to be attributed to differences in saving behavior and investment choice of the minorities in previous literature (Choudhury, 2002) as non-white households tend to invest in less risky assets. However, this should not be the case here as Logit Model 3 controls for risk tolerance level as well. Consequently, the investing gap between races remained unexplained.
+
+* The next factor that has the highest influence on the dependent variable is FinLit. To elaborate, an increase in the score of FinLit (on a scale from 1 to 7) would increase the likelihood to invest by 3.2 percentage points on average. It can be seen that the effect of the respondents’ self-assessed financial literacy level and their score on the financial literacy quiz are very different, particularly the scores on the test have more predictive power or are more reliable than their self-assessed literacy level. This further supported my aforementioned claim that respondents tend to overestimate their financial literacy. Nonetheless, both of them are still among the factors that have the most influence on the likelihood to participate in the stock market.
+
+* Next, one unit increase in the risk tolerance level (on a scale from 1 to 10) of the respondents would lead to an increase of 3.0 percentage point in the likelihood to invest in stocks, and one unit increase in the self-assessed debt level (on a scale from 1 to 7). It is worth noting that debt and income both influence the wealth of the respondents, and thus influence the likelihood to invest in stocks of the respondents, but when we look at the AME, the debt level has a much stronger effect compared to the income level. However, the unit of the Income variable is in thousands of dollars, and an increase of one thousand dollars is much easier than a one-unit increase in the debt level on a scale from 1 to 7. To put it comparably, a $10,000 increase in Income would increase the likelihood of investing by 2.0 percentage points in the probability of participating in the stock market, approximately the effect of Debt.
+
+* Furthermore, one increase in the familiarity level with financial mobile apps decrease the probability by 0.17 percentage point for a woman and increase the probability by 1.84 percentage point for a man on average. It is interesting to see the opposite effect of familiarity on females and males, however, the average marginal effect for females are not significant at conventional levels (SE = 0.0021, z = -0.7932, p-value = 0.4276), while that of males are statistically significant at the 99% level (SE – 0.0022, z = 8.4399, p-value < 0.01). Therefore, we could say that the average marginal effect of one increase in the familiarity level on a scale of -4 to 4 does not have a significant effect on the likelihood of a female to invest.
+
+
+```{r}
+#ame of familiar for male and female
+summary(margins(model3, at = list(Male = c(0,1)), variables = "Familiar"))
+```
+
+* Finally, when keeping other factors constant at their means, one unit increase in the familiarity level with financial mobile apps for a 48.9-year-old person (the mean age) would increase the likelihood to invest by 1.13 percentage points. However, this effect is different across age groups. To be more specific, when keeping other factors constant at means, the effect of one unit increase in the familiarity level would have a higher effect on the likelihood to participate in the stock market for a 21 years old (4.44 percentage point), compared to older people. For example, at 40 years old it would be 2.41 percentage point, and at 70 years old it would decrease the likelihood by 2.56 percentage point. Similarly, the average marginal effect of one unit increase in familiarity on the dependent variable also decreases when age increases (at 21: an increase of 4.02 percentage point, at 48.9: an increase of 0.98 percentage point, at 70: a decrease of 1.93 percentage point). All of the above effects are statistically significant at the 99% level, which means that the effects are unlikely to be random. This is surprising because I would hypothesis that for older people, keeping other factors constant, a person who is more familiar with mobile apps should be more likely to invest in stocks, not less likely. Currently, I have no alternative hypothesis that could explain this phenomenon.
+
+```{r}
+#MEM of familiar with varying ages, 48.9 is mean age
+summary(margins(model3, at = list(Age = c(21, 30, 40, 50, 60, 70, 48.9), White = 0.76, Male = 0.455, Income = 68.82, Risk = 4.975, Debt = 3.621, Low_Test = 0.302, High_Test = 0.091, Low_Ed = 0.015, High_Ed = 0.49, Fin_Lit = 5.23), variables = "Familiar"))
+```
+
+```{r}
+#AME of familiar with varying ages, 48.9 is mean age
+summary(margins(model3, at = list(Age = c(21, 30, 40, 50, 60, 70, 48.9)), variables = "Familiar"))
+```
+
+
+```{r}
+#plot the ame of familiar with varying ages (for poster)
+x <- c(21,30,40,50,60,70)
+y <- c(0.0402, 0.0316, 0.0207, 0.0084, -0.0051, -0.0193)*100
+plot(x,y, type = 'l')
+plot(x,y, type = 'o', xlab = "Age (years old)", ylab = "AME of Familiar on Participation (pp)")
+title("Graph 1: AME of Familiar on Participation by Age")
+
+```
+
+* To sum up, it is interesting to see that the factors that have the highest influence on the likelihood to invest in stocks are factors regarding the financial literacy level or educational level of the respondents. On the other hand, demographic factors such as age, income, debt, or gender have less effect on the dependent variable, except race. The average marginal effect of my key independent variable has small economic significance (0.79 percentage point), but the effect of it varies a lot with different groups of respondents. For example, as stated above, its marginal effect on a 21-year-old person when keeping other factors at their average is high (4.4 percentage point), around the difference in likelihood to invest between white and non-white people. 
+
+## Sample Prediction
+
+* For example, for myself as a female who is non-white, very familiar with financial mobile apps (Familiar = 4), with a risk tolerance of 5 on a scale of 7, debt level of 1 on a scale of 10, self-assessed financial literacy of 7, age of 21, lowest bracket of income (Income = 10), has a high score on the financial literacy quiz (answered correctly 6/6 questions) and medium education (as I have not yet obtained my bachelor’s degree), Z would be 3.614, so the probability would be 97.38%, which is very high. Given the decision threshold of 40%, the model would predict I do invest in the stock market, which is indeed true. On a different scenario, for a male who is non-white, familiar with financial mobile apps (Familiar = 3), with the risk tolerance of 2 on a scale of 7, the debt level of 1 on a scale of 10, self-assessed financial literacy of 2, age of 23, bracket of income from $50,000-$75,000 (Income = 62.5), high education (a bachelor’s degree), has the medium score on the financial literacy quiz (answered 5/6 correctly), Z would be 1.098, the probability would be 74.99%. This prediction is false for my friend who does not invest in the stock market given the decision threshold of 40%, but it is a good thing that this probability is lower than what the model gave for my previous scenarios. As the accuracy and sensitivity of model 3 are around 70%, false predictions are expected. Finally, for a hypothetical female who is white, very familiar with financial mobile app (Familiar = 4), with a risk tolerance of 2 on a scale of 7, self-assessed financial literacy of 4 on a scale of 10, age of 35 years old, bracket income from $50,000-$75,000 with medium test score and medium education, Z would be -3.04 and the probability would be very low (4.56%) and the model would predict that she does not invest in the stock market.
+
+# Conclusion 
+
+To sum up, similar to previous research (Bogan, 2008), the result of this study confirmed the hypothesis that familiarity with financial mobile apps would increase the likelihood to invest in the stock market, specifically by 0.79 percentage point for every one-unit increase in the familiarity score on a scale from -4 to 4 on average. This factor does not have great economic significance as the magnitude of the influence is small, nonetheless, it should be taken into account that mobile apps are much easier to learn compared to increasing a persons’ education level, or financial knowledge. This could be used as another tool to encourage investing targeting specific groups of people, especially young people because familiarity has the strongest effect on them. This could also mean that in the future when there are more financial mobile apps, specifically more trading apps like Robinhood, there should be more young investors joining the stock market. This hypothesis could be confirmed by future research that uses two different sets of data from two different periods, one with fewer trading apps available and one with more trading apps. In fact, there are datasets that were from the State-to-State survey by the National Financial Capability Study in 2013 and 2015 (the dataset that was used in this research is from 2018). As Robinhood, the pioneer of no fee, no minimum balance brokerage app was founded in 2013, future research could potentially compare the proportion of investors among the respondents between 2013 and 2018, and how the key factors in this research affect the likelihood to invest in stocks differently in 2013.
+
+There are several other interesting implications from this research. First, similar to previous research (Almenberg and Dreber, 2015), controlling for financial literacy and risk tolerance level lessens the effect of gender on likelihood to invest; but unlike the conclusion from previous research, there is still a significant gender gap in investing (although it is small). Secondly, there is also a significant gap in the likelihood to invest between white and non-white people of 4.1 percentage points even after holding other factors constant that remains unexplained. Thirdly, the strongest factors that would (positively) influence the likelihood to trade stocks are related to knowledge, specifically, financial literacy level and education level, while other demographic factors do not matter as much.  Thirdly, old people who are more familiar with financial mobile apps are less likely to invest in stocks than old people who are less familiar with the apps, the phenomenon that remains unexplained as well. And finally, there is a weak correlation between people’s self-reported financial literacy level and their actual financial literacy level that is calculated from the number of correct answers on the given quiz, and I hypothesized that people tend to overestimate their financial literacy level.
+
+I would argue that the best model in this research is reliable given the pseudo R-squared value, the significance level of the variables and the model itself, and the accuracy/sensitivity of the model. There should be no missing important variable, however, there are other variables that could be added to the model to improve its predictive power regarding accuracy/sensitivity. For example, I wish to include a variable that indicates the leisure time a person has, as investing in stock requires a lot of time to keep track of the news, check the stock market, and read additional materials to find out about potential stocks or learn about trading strategies. The occupation of a person would possibly affect the likelihood to invest in stocks as well, as a person who works in banking would be more likely to invest in stock than a pilot, for example. Other than that, the model could also have higher predictive power if it were trained on a better dataset. In this dataset, variables such as age and income that could be numerical are given in the categorical form (age and income bracket), which does not contain as much data as when they are specific numerical values. Furthermore, the survey that obtained this dataset was distributed online, which could potentially bias the model because my key independent variable relates to mobile and online applications. Nonetheless, as I have mentioned, the model is still reliable without omitted variable bias, outliers, and multicollinearity problems.
+References:
+
+
+```{r, include = FALSE}
+#for poster
+final_nfcs %>%
+  mutate(relabel_Part = ifelse(Participation == 1, "Participate", "Not Participate")) %>%
+  ggplot( aes(x = Familiar)) +
+  geom_histogram() +
+  facet_wrap(~relabel_Part) +
+  ggtitle("Graph 2: Frequency of Familiarity Score by Participation in Stock Market") +
+  xlim(-4,4) + 
+  theme_linedraw() +
+  xlab("Familiarity Score") +
+  ylab("Frequency")
+```
+
+```{r}
+length(final_nfcs$Participation)
+```
+
